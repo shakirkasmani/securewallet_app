@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/credit_card.dart';
 import '../widgets/credit_card_widget.dart';
+import 'card_scanner_screen.dart';
 
 class AddCardScreen extends StatefulWidget {
   const AddCardScreen({super.key});
@@ -105,6 +106,34 @@ class _AddCardScreenState extends State<AddCardScreen> {
     }
   }
 
+  Future<void> _scanCard() async {
+    final scannedData = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(builder: (context) => const CardScannerScreen()),
+    );
+
+    if (scannedData != null) {
+      setState(() {
+        _numberController.text = scannedData['cardNumber'] ?? '';
+        _holderController.text = scannedData['cardHolder'] ?? '';
+        _expiryController.text = scannedData['expiryDate'] ?? '';
+        _cvvController.text = scannedData['cvv'] ?? '';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Card scanned successfully!',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Generate dummy CreditCard for preview widget
@@ -163,14 +192,36 @@ class _AddCardScreenState extends State<AddCardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'CHOOSE THEME',
-                    style: GoogleFonts.inter(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.38),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.0,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'CHOOSE THEME',
+                        style: GoogleFonts.inter(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.38),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF10B981),
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(50, 30),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: _scanCard,
+                        icon: const Icon(Icons.camera_alt, size: 14),
+                        label: Text(
+                          'Scan Card',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   SizedBox(

@@ -4,6 +4,8 @@
 <dict>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Authenticate securely using Face ID to unlock your credit card vault.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to scan credit card details.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
