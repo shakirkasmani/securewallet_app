@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/credit_card.dart';
 import '../widgets/credit_card_widget.dart';
+import '../services/secure_storage_service.dart';
 import 'add_card_screen.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -14,6 +15,7 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _revealDetails = false;
+  bool _isLoading = true;
 
   // Key to control card widgets' internal flip states if needed
   final Map<String, GlobalKey<CreditCardWidgetState>> _cardKeys = {};
@@ -54,10 +56,27 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize keys for preloaded cards
+    _loadStoredCards();
+  }
+
+  Future<void> _loadStoredCards() async {
+    final stored = await SecureStorageService().loadCards();
+    if (stored.isEmpty) {
+      // First launch: seed secure storage with the preloaded mock cards
+      await SecureStorageService().saveCards(_cards);
+    } else {
+      _cards.clear();
+      _cards.addAll(stored);
+    }
+
+    // Initialize keys for all loaded cards
     for (var card in _cards) {
       _cardKeys[card.id] = GlobalKey<CreditCardWidgetState>();
     }
+
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   @override
@@ -66,11 +85,15 @@ class _WalletScreenState extends State<WalletScreen> {
     super.dispose();
   }
 
-  void _addNewCard(CreditCard card) {
+  void _addNewCard(CreditCard card) async {
     setState(() {
       _cards.add(card);
       _cardKeys[card.id] = GlobalKey<CreditCardWidgetState>();
     });
+    
+    // Encrypt and save updated card list to secure storage
+    await SecureStorageService().saveCards(_cards);
+
     // Scroll to the newly added card at the bottom of the list
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -88,6 +111,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -143,24 +167,28 @@ class _WalletScreenState extends State<WalletScreen> {
           const SizedBox(width: 12),
         ],
       ),
-      body: _cards.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.only(top: 8, bottom: 32),
-              itemCount: _cards.length,
-              itemBuilder: (context, index) {
-                final card = _cards[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: CreditCardWidget(
-                    key: _cardKeys[card.id],
-                    card: card,
-                    showDetails: _revealDetails,
-                  ),
-                );
-              },
-            ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : _cards.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.only(top: 8, bottom: 32),
+                  itemCount: _cards.length,
+                  itemBuilder: (context, index) {
+                    final card = _cards[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: CreditCardWidget(
+                        key: _cardKeys[card.id],
+                        card: card,
+                        showDetails: _revealDetails,
+                      ),
+                    );
+                  },
+                ),
     );
   }
 

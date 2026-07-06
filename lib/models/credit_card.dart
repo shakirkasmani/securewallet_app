@@ -125,4 +125,33 @@ class CreditCard {
       cardNickname: cardNickname ?? this.cardNickname,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'cardNumber': cardNumber,
+      'cardHolder': cardHolder,
+      'expiryDate': expiryDate,
+      'cvv': cvv,
+      'brand': brand.name,
+      'cardStyleIndex': cardStyleIndex,
+      'cardNickname': cardNickname,
+    };
+  }
+
+  factory CreditCard.fromJson(Map<String, dynamic> json) {
+    return CreditCard(
+      id: json['id'] as String,
+      cardNumber: json['cardNumber'] as String,
+      cardHolder: json['cardHolder'] as String,
+      expiryDate: json['expiryDate'] as String,
+      cvv: json['cvv'] as String,
+      brand: CardBrand.values.firstWhere(
+        (b) => b.name == json['brand'],
+        orElse: () => CardBrand.unknown,
+      ),
+      cardStyleIndex: json['cardStyleIndex'] as int,
+      cardNickname: json['cardNickname'] as String?,
+    );
+  }
 }
