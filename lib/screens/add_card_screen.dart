@@ -6,7 +6,8 @@ import '../widgets/credit_card_widget.dart';
 import 'card_scanner_screen.dart';
 
 class AddCardScreen extends StatefulWidget {
-  const AddCardScreen({super.key});
+  final CreditCard? cardToEdit;
+  const AddCardScreen({super.key, this.cardToEdit});
 
   @override
   State<AddCardScreen> createState() => _AddCardScreenState();
@@ -40,6 +41,24 @@ class _AddCardScreenState extends State<AddCardScreen> {
     super.initState();
     // Watch CVV focus to flip card
     _cvvFocusNode.addListener(_onCvvFocusChange);
+
+    // If in edit mode, pre-populate controller text and local state variables
+    if (widget.cardToEdit != null) {
+      final card = widget.cardToEdit!;
+      _numberController.text = card.formattedCardNumber;
+      _holderController.text = card.cardHolder;
+      _expiryController.text = card.expiryDate;
+      _cvvController.text = card.cvv;
+      _nicknameController.text = card.cardNickname ?? '';
+      
+      _cardNumber = card.cardNumber;
+      _cardHolder = card.cardHolder;
+      _expiryDate = card.expiryDate;
+      _cvv = card.cvv;
+      _nickname = card.cardNickname ?? '';
+      _styleIndex = card.cardStyleIndex;
+      _brand = card.brand;
+    }
 
     // Listeners to update card preview
     _numberController.addListener(() {
@@ -157,7 +176,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Add Card',
+          widget.cardToEdit != null ? 'Edit Card' : 'Add Card',
           style: GoogleFonts.inter(
             color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.bold,
@@ -415,7 +434,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                           ),
                           onPressed: _saveCard,
                           child: Text(
-                            'Save Card Details',
+                            widget.cardToEdit != null ? 'Save Changes' : 'Save Card Details',
                             style: GoogleFonts.inter(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,

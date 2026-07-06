@@ -129,6 +129,161 @@ class _WalletScreenState extends State<WalletScreen> {
     });
   }
 
+  void _editCard(CreditCard card) async {
+    final editedCard = await Navigator.of(context).push<CreditCard>(
+      MaterialPageRoute(
+        builder: (context) => AddCardScreen(cardToEdit: card),
+      ),
+    );
+
+    if (editedCard != null) {
+      setState(() {
+        final index = _cards.indexWhere((c) => c.id == card.id);
+        if (index != -1) {
+          _cards[index] = editedCard;
+          _cardKeys[editedCard.id] = GlobalKey<CreditCardWidgetState>();
+        }
+      });
+
+      // Encrypt and save updated card list to secure storage
+      await SecureStorageService().saveCards(_cards);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Card updated successfully!',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _confirmDeleteCard(CreditCard card) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final onSurface = Theme.of(context).colorScheme.onSurface;
+        final surface = Theme.of(context).colorScheme.surface;
+
+        return AlertDialog(
+          backgroundColor: surface,
+          title: Text(
+            'Delete Card',
+            style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: onSurface),
+          ),
+          content: Text(
+            'Are you sure you want to delete "${card.cardNickname ?? card.formattedCardNumber.substring(card.formattedCardNumber.length - 4)}"? This action cannot be undone.',
+            style: GoogleFonts.inter(color: onSurface.withOpacity(0.7)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.inter(color: onSurface.withOpacity(0.5), fontWeight: FontWeight.w600),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                _deleteCard(card);
+              },
+              child: Text(
+                'Delete',
+                style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _deleteCard(CreditCard card) async {
+    setState(() {
+      _cards.removeWhere((c) => c.id == card.id);
+      _cardKeys.remove(card.id);
+    });
+
+    // Encrypt and save updated card list to secure storage
+    await SecureStorageService().saveCards(_cards);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Card deleted successfully!',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showCardOptions(CreditCard card) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      builder: (context) {
+        final onSurface = Theme.of(context).colorScheme.onSurface;
+        
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Pull bar indicator
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: onSurface.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.edit_outlined, color: onSurface),
+                title: Text(
+                  'Edit Card Details',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: onSurface),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _editCard(card);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: Text(
+                  'Delete Card',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _confirmDeleteCard(card);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
@@ -208,10 +363,13 @@ class _WalletScreenState extends State<WalletScreen> {
                         final card = _cards[index];
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: CreditCardWidget(
-                            key: _cardKeys[card.id],
-                            card: card,
-                            showDetails: _revealDetails,
+                          child: GestureDetector(
+                            onLongPress: () => _showCardOptions(card),
+                            child: CreditCardWidget(
+                              key: _cardKeys[card.id],
+                              card: card,
+                              showDetails: _revealDetails,
+                            ),
                           ),
                         );
                       },
