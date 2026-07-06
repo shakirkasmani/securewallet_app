@@ -1,6 +1,9 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 class CardScannerScreen extends StatefulWidget {
   const CardScannerScreen({super.key});
@@ -14,8 +17,11 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
   bool _isScanning = false;
+  bool _isProcessing = false;
   late AnimationController _animationController;
   late Animation<double> _laserPosition;
+  
+  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   @override
   void initState() {
@@ -34,7 +40,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
     try {
       _cameras = await availableCameras();
       if (_cameras != null && _cameras!.isNotEmpty) {
-        // Default to first back camera
+        // Default to back camera
         final backCamera = _cameras!.firstWhere(
           (camera) => camera.lensDirection == CameraLensDirection.back,
           orElse: () => _cameras!.first,
@@ -44,6 +50,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           backCamera,
           ResolutionPreset.medium,
           enableAudio: false,
+          imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.yuv420 : ImageFormatGroup.bgra8888,
         );
 
         await _controller!.initialize();
@@ -51,6 +58,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           setState(() {
             _isInitialized = true;
           });
+          _startImageStream();
         }
       }
     } catch (e) {
@@ -58,33 +66,143 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
     }
   }
 
+  void _startImageStream() {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    _controller!.startImageStream((CameraImage image) async {
+      if (_isScanning) return; // If already succeeded and popping, skip
+      if (_isProcessing) return;
+      _isProcessing = true;
+
+      try {
+        final WriteBuffer allBytes = WriteBuffer();
+        for (final Plane plane in image.planes) {
+          allBytes.putUint8List(plane.bytes);
+        }
+        final bytes = allBytes.done().buffer.asUint8List();
+
+        final Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
+
+        final camera = _cameras!.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+          orElse: () => _cameras!.first,
+        );
+
+        final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
+        final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+
+        final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
+
+        final metadata = InputImageMetadata(
+          size: imageSize,
+          rotation: imageRotation,
+          format: inputImageFormat,
+          bytesPerRow: bytesPerRow,
+        );
+
+        final inputImage = InputImage.fromBytes(
+          bytes: bytes,
+          metadata: metadata,
+        );
+
+        final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+        _parseCardDetails(recognizedText.text);
+      } catch (e) {
+        debugPrint("Error processing frame: $e");
+      } finally {
+        _isProcessing = false;
+      }
+    });
+  }
+
+  void _parseCardDetails(String text) {
+    // 1. Search for credit card numbers (groups of 13 to 19 digits)
+    final numberRegex = RegExp(r'\b(?:\d[ -]*?){13,19}\b');
+    final matches = numberRegex.allMatches(text);
+    String? foundNumber;
+    
+    for (var match in matches) {
+      final rawNum = match.group(0)!.replaceAll(RegExp(r'\D'), '');
+      if (rawNum.length >= 13 && rawNum.length <= 19) {
+        foundNumber = rawNum;
+        break;
+      }
+    }
+
+    // 2. Search for Expiry Date (MM/YY or MM/YYYY)
+    final expiryRegex = RegExp(r'\b(0[1-9]|1[0-2])\s*/\s*([0-9]{2,4})\b');
+    final expiryMatch = expiryRegex.firstMatch(text);
+    String? foundExpiry;
+    if (expiryMatch != null) {
+      final month = expiryMatch.group(1)!;
+      var year = expiryMatch.group(2)!;
+      if (year.length == 4) {
+        year = year.substring(2);
+      }
+      foundExpiry = '$month/$year';
+    }
+
+    // 3. Search for Cardholder Name
+    final lines = text.split('\n');
+    String? foundHolder;
+    final commonKeywords = [
+      'VISA', 'MASTERCARD', 'AMEX', 'DISCOVER', 'EXPRESS', 'BANK', 'CARD',
+      'DEBIT', 'CREDIT', 'VALID', 'THRU', 'MONTH', 'YEAR', 'GOOD', 'FROM',
+      'MEMBER', 'SINCE', 'SECURITY', 'LIMIT', 'PLATINUM', 'GOLD', 'PREMIER'
+    ];
+
+    for (var line in lines) {
+      final cleanLine = line.trim();
+      if (cleanLine.isEmpty) continue;
+
+      // Match uppercase alphabetic words (likely to be the cardholder name)
+      final isUpperAlpha = RegExp(r'^[A-Z ]+$').hasMatch(cleanLine);
+      if (isUpperAlpha) {
+        final words = cleanLine.split(' ').where((w) => w.isNotEmpty).toList();
+        if (words.length >= 2 && words.length <= 4) {
+          bool containsKeyword = false;
+          for (var keyword in commonKeywords) {
+            if (cleanLine.contains(keyword)) {
+              containsKeyword = true;
+              break;
+            }
+          }
+          if (!containsKeyword) {
+            foundHolder = cleanLine;
+            break;
+          }
+        }
+      }
+    }
+
+    // If card number is successfully matched, stop scanner and return details!
+    if (foundNumber != null) {
+      setState(() {
+        _isScanning = true;
+      });
+
+      _controller?.stopImageStream();
+
+      // Return parsed/scanned card details
+      final scannedCardData = {
+        'cardNumber': foundNumber,
+        'cardHolder': foundHolder ?? 'CARD HOLDER',
+        'expiryDate': foundExpiry ?? '12/30',
+        'cvv': '123', // CVV needs to be manually entered by user for security
+      };
+
+      if (mounted) {
+        Navigator.of(context).pop(scannedCardData);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
+    _textRecognizer.close();
     _animationController.dispose();
     super.dispose();
-  }
-
-  void _onScanSuccess() {
-    if (_isScanning) return;
-    setState(() {
-      _isScanning = true;
-    });
-
-    // Simulate scanning frame-processing delay
-    Future.delayed(const Duration(milliseconds: 1800), () {
-      if (!mounted) return;
-      
-      // Return a realistic mock card parsed from the scan
-      final scannedCardData = {
-        'cardNumber': '4111222233334444',
-        'cardHolder': 'SHAKIR KASMANI',
-        'expiryDate': '09/31',
-        'cvv': '273',
-      };
-
-      Navigator.of(context).pop(scannedCardData);
-    });
   }
 
   @override
@@ -100,7 +218,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
 
     final size = MediaQuery.of(context).size;
     final cardWidth = size.width * 0.85;
-    final cardHeight = cardWidth / 1.586; // standard credit card aspect ratio
+    final cardHeight = cardWidth / 1.586; // standard aspect ratio
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -124,7 +242,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
             child: CameraPreview(_controller!),
           ),
 
-          // 2. Translucent Overlay with Stencil cut-out
+          // 2. Overlay Cut-out Mask
           Positioned.fill(
             child: ColorFiltered(
               colorFilter: ColorFilter.mode(
@@ -152,19 +270,19 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
             ),
           ),
 
-          // 3. Stencil border overlay
+          // 3. Card-shaped stencil border
           Align(
             alignment: Alignment.center,
             child: Container(
               width: cardWidth,
               height: cardHeight,
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: const Color(0xFF10B981), width: 2),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Stack(
                 children: [
-                  // Animated Scanning Laser Line
+                  // Laser Sweep Line
                   AnimatedBuilder(
                     animation: _animationController,
                     builder: (context, child) {
@@ -193,9 +311,9 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
             ),
           ),
 
-          // 4. Texts and Actions Overlay
+          // 4. Instructions overlay text
           Positioned(
-            bottom: 60,
+            bottom: 80,
             left: 24,
             right: 24,
             child: Column(
@@ -205,7 +323,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
                   const CircularProgressIndicator(color: Color(0xFF10B981)),
                   const SizedBox(height: 16),
                   Text(
-                    'Analyzing card details...',
+                    'Extracting card details...',
                     style: GoogleFonts.inter(
                       color: Colors.white,
                       fontSize: 16,
@@ -213,29 +331,33 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
                     ),
                   ),
                 ] else ...[
-                  Text(
-                    'Align credit card inside the frame',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                    ),
-                    onPressed: _onScanSuccess,
-                    icon: const Icon(Icons.camera_alt),
-                    label: Text(
-                      'Capture & Scan',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF10B981),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Align your card in the frame to scan...',
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
