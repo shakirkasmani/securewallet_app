@@ -5,32 +5,6 @@ import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
-// Custom subclass of InputImageMetadata to bypass iOS ML Kit format conversion bug.
-// The native iOS plugin code applies a FOUR_CHAR_CODE byte-swap to the 'image_format' parameter.
-// To pass 'BGRA' (0x42475241) on iOS, we must pass the pre-swapped value 1095914562 (0x41524742).
-class CustomInputImageMetadata extends InputImageMetadata {
-  final int customFormatValue;
-
-  CustomInputImageMetadata({
-    required super.size,
-    required super.rotation,
-    required super.format,
-    required super.bytesPerRow,
-    required this.customFormatValue,
-  });
-
-  @override
-  Map<String, dynamic> toJson() {
-    return {
-      'width': size.width,
-      'height': size.height,
-      'rotation': rotation.rawValue,
-      'image_format': customFormatValue,
-      'bytes_per_row': bytesPerRow,
-    };
-  }
-}
-
 class CardScannerScreen extends StatefulWidget {
   const CardScannerScreen({super.key});
 
@@ -120,16 +94,15 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
 
       try {
         final Uint8List bytes;
+        final InputImageFormat inputImageFormat;
+        
         if (Platform.isIOS) {
-          // iOS bgra8888 outputs a single plane containing the raw BGRA bytes
           bytes = image.planes.first.bytes;
+          inputImageFormat = InputImageFormat.bgra8888;
         } else {
-          // Android yuv420 requires concatenating all planes
-          final WriteBuffer allBytes = WriteBuffer();
-          for (final Plane plane in image.planes) {
-            allBytes.putUint8List(plane.bytes);
-          }
-          bytes = allBytes.done().buffer.asUint8List();
+          // Convert Android YUV_420_888 to NV21 bytes to satisfy native Android plugin converter
+          bytes = _convertYUV420ToNV21(image);
+          inputImageFormat = InputImageFormat.nv21;
         }
 
         final Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
@@ -141,18 +114,6 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
 
         final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
         
-        // Resolve raw image format explicitly per platform to prevent conversion errors
-        final InputImageFormat inputImageFormat;
-        final int customFormatValue;
-        if (Platform.isIOS) {
-          inputImageFormat = InputImageFormat.bgra8888;
-          // Pre-swapped format value 1095914562 (0x41524742) to offset native iOS plugin's FOUR_CHAR_CODE byte-swap.
-          customFormatValue = 1095914562;
-        } else {
-          inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.yuv_420_888;
-          customFormatValue = inputImageFormat.rawValue;
-        }
-
         final InputImage inputImage;
         if (Platform.isIOS) {
           // On iOS, we use the bitmap constructor which handles copying raw image bytes safely
@@ -165,12 +126,11 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           );
         } else {
           final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
-          final metadata = CustomInputImageMetadata(
+          final metadata = InputImageMetadata(
             size: imageSize,
             rotation: imageRotation,
             format: inputImageFormat,
             bytesPerRow: bytesPerRow,
-            customFormatValue: customFormatValue,
           );
           inputImage = InputImage.fromBytes(
             bytes: bytes,
@@ -186,6 +146,63 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
         _isProcessing = false;
       }
     });
+  }
+
+  // Converts Android YUV_420_888 frame structure into raw NV21 bytes.
+  // The google_mlkit_commons native converter on Android only supports NV21 (17) or YV12 (842094169).
+  Uint8List _convertYUV420ToNV21(CameraImage image) {
+    final width = image.width;
+    final height = image.height;
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+
+    final yBuffer = yPlane.bytes;
+    final uBuffer = uPlane.bytes;
+    final vBuffer = vPlane.bytes;
+
+    final numPixels = width * height;
+    final nv21 = Uint8List(numPixels + (numPixels ~/ 2));
+
+    // 1. Copy Y plane
+    int nv21Idx = 0;
+    if (yPlane.bytesPerRow == width) {
+      nv21.setRange(0, numPixels, yBuffer);
+      nv21Idx = numPixels;
+    } else {
+      int yIdx = 0;
+      for (int row = 0; row < height; row++) {
+        nv21.setRange(nv21Idx, nv21Idx + width, yBuffer.sublist(yIdx, yIdx + width));
+        nv21Idx += width;
+        yIdx += yPlane.bytesPerRow;
+      }
+    }
+
+    // 2. Interleave V and U bytes (NV21 is Y-V-U-V-U...)
+    final int uvRowStride = uPlane.bytesPerRow;
+    final int uvPixelStride = uPlane.bytesPerPixel ?? 1;
+    final int uvWidth = width ~/ 2;
+    final int uvHeight = height ~/ 2;
+
+    for (int row = 0; row < uvHeight; row++) {
+      final int uRowOffset = row * uvRowStride;
+      final int vRowOffset = row * vPlane.bytesPerRow;
+      final int vPixelStride = vPlane.bytesPerPixel ?? 1;
+      
+      for (int col = 0; col < uvWidth; col++) {
+        final int uIdx = uRowOffset + col * uvPixelStride;
+        final int vIdx = vRowOffset + col * vPixelStride;
+        
+        if (vIdx < vBuffer.length && nv21Idx < nv21.length) {
+          nv21[nv21Idx++] = vBuffer[vIdx];
+        }
+        if (uIdx < uBuffer.length && nv21Idx < nv21.length) {
+          nv21[nv21Idx++] = uBuffer[uIdx];
+        }
+      }
+    }
+
+    return nv21;
   }
 
   void _parseCardDetails(String text) {
