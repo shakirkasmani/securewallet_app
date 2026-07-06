@@ -10,6 +10,7 @@ class CreditCardWidget extends StatefulWidget {
   final bool showDetails;
   final VoidCallback? onTap;
   final bool isFrontInitially;
+  final bool showActionButtons;
 
   const CreditCardWidget({
     super.key,
@@ -17,6 +18,7 @@ class CreditCardWidget extends StatefulWidget {
     this.showDetails = false,
     this.onTap,
     this.isFrontInitially = true,
+    this.showActionButtons = true,
   });
 
   @override
@@ -204,20 +206,21 @@ class CreditCardWidgetState extends State<CreditCardWidget> with SingleTickerPro
                           ],
                         ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildCardActionIcon(
-                            icon: _showDetails ? Icons.visibility : Icons.visibility_off,
-                            onTap: () {
-                              setState(() {
-                                _showDetails = !_showDetails;
-                              });
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _buildCardActionIcon(
-                            icon: Icons.copy,
+                      if (widget.showActionButtons)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildCardActionIcon(
+                              icon: _showDetails ? Icons.visibility : Icons.visibility_off,
+                              onTap: () {
+                                setState(() {
+                                  _showDetails = !_showDetails;
+                                });
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            _buildCardActionIcon(
+                              icon: Icons.copy,
                             onTap: () async {
                               await Clipboard.setData(ClipboardData(text: widget.card.cardNumber));
                               

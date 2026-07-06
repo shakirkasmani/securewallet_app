@@ -180,6 +180,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                     showDetails: true,
                     // Keep front initially unless CVV input is focused
                     isFrontInitially: !_cvvFocusNode.hasFocus,
+                    showActionButtons: false,
                   ),
                 ),
               ),
