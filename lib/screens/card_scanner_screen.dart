@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,7 +16,6 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
   bool _isScanning = false;
-  bool _isProcessing = false;
   late AnimationController _animationController;
   late Animation<double> _laserPosition;
   
@@ -50,7 +48,6 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           backCamera,
           ResolutionPreset.medium,
           enableAudio: false,
-          imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.yuv420 : ImageFormatGroup.bgra8888,
         );
 
         await _controller!.initialize();
@@ -58,7 +55,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           setState(() {
             _isInitialized = true;
           });
-          _startImageStream();
+          _startScanningLoop();
         }
       }
     } catch (e) {
@@ -66,53 +63,53 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
     }
   }
 
-  void _startImageStream() {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+  // Automatic scanning loop: takes picture frames and feeds them to on-device ML Kit OCR.
+  // This is highly compatible and avoids raw camera image format conversion bugs on iOS/Android.
+  void _startScanningLoop() async {
+    while (!_isScanning && mounted) {
+      if (_controller == null || !_controller!.value.isInitialized) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        continue;
+      }
 
-    _controller!.startImageStream((CameraImage image) async {
-      if (_isScanning) return; // If already succeeded and popping, skip
-      if (_isProcessing) return;
-      _isProcessing = true;
+      if (_controller!.value.isTakingPicture) {
+        await Future.delayed(const Duration(milliseconds: 150));
+        continue;
+      }
 
       try {
-        final WriteBuffer allBytes = WriteBuffer();
-        for (final Plane plane in image.planes) {
-          allBytes.putUint8List(plane.bytes);
+        final XFile file = await _controller!.takePicture();
+        if (_isScanning || !mounted) {
+          // If already popped or scanning finalized, clean up file and stop
+          _deleteTempFile(file.path);
+          break;
         }
-        final bytes = allBytes.done().buffer.asUint8List();
 
-        final Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
-
-        final camera = _cameras!.firstWhere(
-          (c) => c.lensDirection == CameraLensDirection.back,
-          orElse: () => _cameras!.first,
-        );
-
-        final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
-        final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
-
-        final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
-
-        final metadata = InputImageMetadata(
-          size: imageSize,
-          rotation: imageRotation,
-          format: inputImageFormat,
-          bytesPerRow: bytesPerRow,
-        );
-
-        final inputImage = InputImage.fromBytes(
-          bytes: bytes,
-          metadata: metadata,
-        );
-
+        final inputImage = InputImage.fromFilePath(file.path);
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+
+        // Delete the temp file to keep system storage clean
+        _deleteTempFile(file.path);
+
         _parseCardDetails(recognizedText.text);
       } catch (e) {
-        debugPrint("Error processing frame: $e");
-      } finally {
-        _isProcessing = false;
+        debugPrint('Auto-scan frame error: $e');
       }
-    });
+
+      // Interval between scans to keep CPU/Battery usage low (800ms)
+      await Future.delayed(const Duration(milliseconds: 800));
+    }
+  }
+
+  Future<void> _deleteTempFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (e) {
+      debugPrint('Error deleting temporary file: $e');
+    }
   }
 
   void _parseCardDetails(String text) {
@@ -181,8 +178,6 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
         _isScanning = true;
       });
 
-      _controller?.stopImageStream();
-
       // Return parsed/scanned card details
       final scannedCardData = {
         'cardNumber': foundNumber,
@@ -199,6 +194,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
 
   @override
   void dispose() {
+    _isScanning = true; // Signals scanning loop to terminate
     _controller?.dispose();
     _textRecognizer.close();
     _animationController.dispose();
