@@ -1,8 +1,35 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
+// Custom subclass of InputImageMetadata to bypass iOS ML Kit format conversion bug.
+// The native iOS plugin code applies a FOUR_CHAR_CODE byte-swap to the 'image_format' parameter.
+// To pass 'BGRA' (0x42475241) on iOS, we must pass the pre-swapped value 1095914562 (0x41524742).
+class CustomInputImageMetadata extends InputImageMetadata {
+  final int customFormatValue;
+
+  CustomInputImageMetadata({
+    required super.size,
+    required super.rotation,
+    required super.format,
+    required super.bytesPerRow,
+    required this.customFormatValue,
+  });
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'width': size.width,
+      'height': size.height,
+      'rotation': rotation.rawValue,
+      'image_format': customFormatValue,
+      'bytes_per_row': bytesPerRow,
+    };
+  }
+}
 
 class CardScannerScreen extends StatefulWidget {
   const CardScannerScreen({super.key});
@@ -16,6 +43,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
   bool _isScanning = false;
+  bool _isProcessing = false;
   late AnimationController _animationController;
   late Animation<double> _laserPosition;
   
@@ -48,6 +76,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           backCamera,
           ResolutionPreset.medium,
           enableAudio: false,
+          imageFormatGroup: Platform.isIOS ? ImageFormatGroup.bgra8888 : ImageFormatGroup.yuv420,
         );
 
         await _controller!.initialize();
@@ -55,7 +84,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           setState(() {
             _isInitialized = true;
           });
-          _startScanningLoop();
+          _startImageStream();
         }
       }
     } catch (e) {
@@ -63,53 +92,68 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
     }
   }
 
-  // Automatic scanning loop: takes picture frames and feeds them to on-device ML Kit OCR.
-  // This is highly compatible and avoids raw camera image format conversion bugs on iOS/Android.
-  void _startScanningLoop() async {
-    while (!_isScanning && mounted) {
-      if (_controller == null || !_controller!.value.isInitialized) {
-        await Future.delayed(const Duration(milliseconds: 300));
-        continue;
-      }
+  // Silent automatic scanning loop using live camera image stream (avoids iOS shutter sound)
+  void _startImageStream() {
+    if (_controller == null || !_controller!.value.isInitialized) return;
 
-      if (_controller!.value.isTakingPicture) {
-        await Future.delayed(const Duration(milliseconds: 150));
-        continue;
-      }
+    _controller!.startImageStream((CameraImage image) async {
+      if (_isScanning) return; // If already succeeded and popping, skip
+      if (_isProcessing) return;
+      _isProcessing = true;
 
       try {
-        final XFile file = await _controller!.takePicture();
-        if (_isScanning || !mounted) {
-          // If already popped or scanning finalized, clean up file and stop
-          _deleteTempFile(file.path);
-          break;
+        final Uint8List bytes;
+        if (Platform.isIOS) {
+          // iOS bgra8888 outputs a single plane containing the raw BGRA bytes
+          bytes = image.planes.first.bytes;
+        } else {
+          // Android yuv420 requires concatenating all planes
+          final WriteBuffer allBytes = WriteBuffer();
+          for (final Plane plane in image.planes) {
+            allBytes.putUint8List(plane.bytes);
+          }
+          bytes = allBytes.done().buffer.asUint8List();
         }
 
-        final inputImage = InputImage.fromFilePath(file.path);
+        final Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
+
+        final camera = _cameras!.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+          orElse: () => _cameras!.first,
+        );
+
+        final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
+        
+        // Resolve raw image format
+        final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+        
+        // On iOS, we pass the pre-swapped format value 1095914562 (0x41524742) to offset the iOS plugin's FOUR_CHAR_CODE byte-swap.
+        // On Android, we pass the standard format raw value directly.
+        final int customFormatValue = Platform.isIOS ? 1095914562 : inputImageFormat.rawValue;
+
+        final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
+
+        final metadata = CustomInputImageMetadata(
+          size: imageSize,
+          rotation: imageRotation,
+          format: inputImageFormat,
+          bytesPerRow: bytesPerRow,
+          customFormatValue: customFormatValue,
+        );
+
+        final inputImage = InputImage.fromBytes(
+          bytes: bytes,
+          metadata: metadata,
+        );
+
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
-
-        // Delete the temp file to keep system storage clean
-        _deleteTempFile(file.path);
-
         _parseCardDetails(recognizedText.text);
       } catch (e) {
-        debugPrint('Auto-scan frame error: $e');
+        debugPrint("Error processing stream frame: $e");
+      } finally {
+        _isProcessing = false;
       }
-
-      // Interval between scans to keep CPU/Battery usage low (800ms)
-      await Future.delayed(const Duration(milliseconds: 800));
-    }
-  }
-
-  Future<void> _deleteTempFile(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
-    } catch (e) {
-      debugPrint('Error deleting temporary file: $e');
-    }
+    });
   }
 
   void _parseCardDetails(String text) {
@@ -178,6 +222,8 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
         _isScanning = true;
       });
 
+      _controller?.stopImageStream();
+
       // Return parsed/scanned card details
       final scannedCardData = {
         'cardNumber': foundNumber,
@@ -194,7 +240,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
 
   @override
   void dispose() {
-    _isScanning = true; // Signals scanning loop to terminate
+    _isScanning = true;
     _controller?.dispose();
     _textRecognizer.close();
     _animationController.dispose();
