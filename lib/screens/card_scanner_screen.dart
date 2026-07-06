@@ -153,20 +153,30 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           customFormatValue = inputImageFormat.rawValue;
         }
 
-        final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
-
-        final metadata = CustomInputImageMetadata(
-          size: imageSize,
-          rotation: imageRotation,
-          format: inputImageFormat,
-          bytesPerRow: bytesPerRow,
-          customFormatValue: customFormatValue,
-        );
-
-        final inputImage = InputImage.fromBytes(
-          bytes: bytes,
-          metadata: metadata,
-        );
+        final InputImage inputImage;
+        if (Platform.isIOS) {
+          // On iOS, we use the bitmap constructor which handles copying raw image bytes safely
+          // into CoreGraphics contexts, completely bypassing CoreVideo CVPixelBuffer lock-state crashes.
+          inputImage = InputImage.fromBitmap(
+            bitmap: bytes,
+            width: image.width,
+            height: image.height,
+            rotation: camera.sensorOrientation,
+          );
+        } else {
+          final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
+          final metadata = CustomInputImageMetadata(
+            size: imageSize,
+            rotation: imageRotation,
+            format: inputImageFormat,
+            bytesPerRow: bytesPerRow,
+            customFormatValue: customFormatValue,
+          );
+          inputImage = InputImage.fromBytes(
+            bytes: bytes,
+            metadata: metadata,
+          );
+        }
 
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
         _parseCardDetails(recognizedText.text);
