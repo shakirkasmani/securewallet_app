@@ -92,14 +92,23 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
     }
   }
 
+  DateTime? _lastProcessedTime;
+
   // Silent automatic scanning loop using live camera image stream (avoids iOS shutter sound)
   void _startImageStream() {
     if (_controller == null || !_controller!.value.isInitialized) return;
 
     _controller!.startImageStream((CameraImage image) async {
       if (_isScanning) return; // If already succeeded and popping, skip
+
+      final now = DateTime.now();
+      if (_lastProcessedTime != null && now.difference(_lastProcessedTime!).inMilliseconds < 1000) {
+        return; // Drop frames to prevent UI thread saturation and freeze
+      }
+
       if (_isProcessing) return;
       _isProcessing = true;
+      _lastProcessedTime = now;
 
       try {
         final Uint8List bytes;
@@ -124,12 +133,17 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
 
         final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
         
-        // Resolve raw image format
-        final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
-        
-        // On iOS, we pass the pre-swapped format value 1095914562 (0x41524742) to offset the iOS plugin's FOUR_CHAR_CODE byte-swap.
-        // On Android, we pass the standard format raw value directly.
-        final int customFormatValue = Platform.isIOS ? 1095914562 : inputImageFormat.rawValue;
+        // Resolve raw image format explicitly per platform to prevent conversion errors
+        final InputImageFormat inputImageFormat;
+        final int customFormatValue;
+        if (Platform.isIOS) {
+          inputImageFormat = InputImageFormat.bgra8888;
+          // Pre-swapped format value 1095914562 (0x41524742) to offset native iOS plugin's FOUR_CHAR_CODE byte-swap.
+          customFormatValue = 1095914562;
+        } else {
+          inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.yuv_420_888;
+          customFormatValue = inputImageFormat.rawValue;
+        }
 
         final int bytesPerRow = image.planes.isNotEmpty ? image.planes.first.bytesPerRow : 0;
 
