@@ -4,17 +4,8 @@ import 'screens/wallet_screen.dart';
 import 'services/notification_service.dart';
 
 void main() async {
-  // Set system UI overlay styling for a seamless dark mode look
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF0F0F12),
-    systemNavigationBarIconBrightness: Brightness.light,
-  ));
-  
   await NotificationService().init();
-  
   runApp(const CreditCardVaultApp());
 }
 
@@ -26,7 +17,20 @@ class CreditCardVaultApp extends StatelessWidget {
     return MaterialApp(
       title: 'Card Vault',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.system,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF3F4F6),
+        primaryColor: Colors.black,
+        colorScheme: const ColorScheme.light(
+          primary: Colors.black,
+          secondary: Color(0xFF10B981),
+          surface: Colors.white,
+          onSurface: Colors.black87,
+          error: Colors.redAccent,
+        ),
+        useMaterial3: true,
+      ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0F0F12),
@@ -35,6 +39,7 @@ class CreditCardVaultApp extends StatelessWidget {
           primary: Colors.white,
           secondary: Color(0xFF10B981),
           surface: Color(0xFF1E1E24),
+          onSurface: Colors.white,
           error: Colors.redAccent,
         ),
         useMaterial3: true,

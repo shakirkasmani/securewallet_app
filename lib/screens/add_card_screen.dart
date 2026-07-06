@@ -120,18 +120,17 @@ class _AddCardScreenState extends State<AddCardScreen> {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F12),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           'Add Card',
           style: GoogleFonts.inter(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -167,7 +166,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                   Text(
                     'CHOOSE THEME',
                     style: GoogleFonts.inter(
-                      color: Colors.white38,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.38),
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.0,
@@ -201,7 +200,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                                 end: Alignment.bottomRight,
                               ),
                               border: Border.all(
-                                color: isSelected ? Colors.white : Colors.transparent,
+                                color: isSelected ? Theme.of(context).colorScheme.onSurface : Colors.transparent,
                                 width: 2,
                               ),
                               boxShadow: isSelected
@@ -230,14 +229,14 @@ class _AddCardScreenState extends State<AddCardScreen> {
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.02),
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.02),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(30),
                     topRight: Radius.circular(30),
                   ),
                   border: Border(
                     top: BorderSide(
-                      color: Colors.white.withOpacity(0.05),
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
                       width: 1,
                     ),
                   ),
@@ -354,8 +353,8 @@ class _AddCardScreenState extends State<AddCardScreen> {
                         // Action button
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
+                            backgroundColor: Theme.of(context).colorScheme.onSurface,
+                            foregroundColor: Theme.of(context).colorScheme.surface,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
@@ -399,7 +398,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
         Text(
           label,
           style: GoogleFonts.inter(
-            color: Colors.white38,
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.38),
             fontSize: 10,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.0,
@@ -413,37 +412,37 @@ class _AddCardScreenState extends State<AddCardScreen> {
           inputFormatters: inputFormatters,
           textCapitalization: textCapitalization,
           style: GoogleFonts.inter(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: GoogleFonts.inter(
-              color: Colors.white10,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
               fontSize: 15,
             ),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.03),
+            fillColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.03),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(
-                color: Colors.white.withOpacity(0.08),
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
                 width: 1,
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(
-                color: Colors.white.withOpacity(0.05),
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
                 width: 1,
               ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Colors.white38,
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.38),
                 width: 1,
               ),
             ),

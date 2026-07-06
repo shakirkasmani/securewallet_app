@@ -85,8 +85,9 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F12),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -95,7 +96,7 @@ class _WalletScreenState extends State<WalletScreen> {
           style: GoogleFonts.inter(
             fontSize: 32,
             fontWeight: FontWeight.w800,
-            color: Colors.white,
+            color: onSurface,
           ),
         ),
         actions: [
@@ -104,12 +105,12 @@ class _WalletScreenState extends State<WalletScreen> {
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: onSurface.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 _revealDetails ? Icons.visibility : Icons.visibility_off,
-                color: _revealDetails ? const Color(0xFF10B981) : Colors.white70,
+                color: _revealDetails ? const Color(0xFF10B981) : onSurface.withOpacity(0.7),
                 size: 20,
               ),
             ),
@@ -125,10 +126,10 @@ class _WalletScreenState extends State<WalletScreen> {
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: onSurface.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 20),
+              child: Icon(Icons.add, color: onSurface, size: 20),
             ),
             onPressed: () async {
               final newCard = await Navigator.of(context).push<CreditCard>(
@@ -164,6 +165,9 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Widget _buildEmptyState() {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final surface = Theme.of(context).colorScheme.surface;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -173,13 +177,13 @@ class _WalletScreenState extends State<WalletScreen> {
             Icon(
               Icons.credit_card_off,
               size: 80,
-              color: Colors.white.withOpacity(0.1),
+              color: onSurface.withOpacity(0.1),
             ),
             const SizedBox(height: 24),
             Text(
               'No Cards Stored',
               style: GoogleFonts.inter(
-                color: Colors.white,
+                color: onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -189,7 +193,7 @@ class _WalletScreenState extends State<WalletScreen> {
               'Add a card to begin storing your credit cards securely for quick online copying.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                color: Colors.white38,
+                color: onSurface.withOpacity(0.38),
                 fontSize: 13,
                 height: 1.5,
               ),
@@ -197,8 +201,8 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
+                backgroundColor: onSurface,
+                foregroundColor: surface,
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
