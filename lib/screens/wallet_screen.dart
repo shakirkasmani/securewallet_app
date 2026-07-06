@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/credit_card.dart';
 import '../widgets/credit_card_widget.dart';
 import '../services/secure_storage_service.dart';
+import '../services/biometric_auth_service.dart';
 import 'add_card_screen.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class _WalletScreenState extends State<WalletScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _revealDetails = false;
   bool _isLoading = true;
+  bool _isAuthenticated = false;
 
   // Key to control card widgets' internal flip states if needed
   final Map<String, GlobalKey<CreditCardWidgetState>> _cardKeys = {};
@@ -56,7 +58,12 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void initState() {
     super.initState();
-    _loadStoredCards();
+    _initializeWallet();
+  }
+
+  Future<void> _initializeWallet() async {
+    await _loadStoredCards();
+    await _checkBiometricAuth();
   }
 
   Future<void> _loadStoredCards() async {
@@ -76,6 +83,22 @@ class _WalletScreenState extends State<WalletScreen> {
 
     setState(() {
       _isLoading = false;
+    });
+  }
+
+  Future<void> _checkBiometricAuth() async {
+    final isAvailable = await BiometricAuthService().isBiometricsAvailable();
+    if (!isAvailable) {
+      // If biometrics are not configured or supported, bypass authentication
+      setState(() {
+        _isAuthenticated = true;
+      });
+      return;
+    }
+
+    final success = await BiometricAuthService().authenticate();
+    setState(() {
+      _isAuthenticated = success;
     });
   }
 
@@ -124,71 +147,133 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
         ),
         actions: [
-          // Security Visibility Toggle in AppBar (Global toggle)
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: onSurface.withOpacity(0.05),
-                shape: BoxShape.circle,
+          if (_isAuthenticated) ...[
+            // Security Visibility Toggle in AppBar (Global toggle)
+            IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: onSurface.withOpacity(0.05),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _revealDetails ? Icons.visibility : Icons.visibility_off,
+                  color: _revealDetails ? const Color(0xFF10B981) : onSurface.withOpacity(0.7),
+                  size: 20,
+                ),
               ),
-              child: Icon(
-                _revealDetails ? Icons.visibility : Icons.visibility_off,
-                color: _revealDetails ? const Color(0xFF10B981) : onSurface.withOpacity(0.7),
-                size: 20,
-              ),
+              tooltip: _revealDetails ? 'Hide details' : 'Show details',
+              onPressed: () {
+                setState(() {
+                  _revealDetails = !_revealDetails;
+                });
+              },
             ),
-            tooltip: _revealDetails ? 'Hide details' : 'Show details',
-            onPressed: () {
-              setState(() {
-                _revealDetails = !_revealDetails;
-              });
-            },
-          ),
-          // Add Card Button
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: onSurface.withOpacity(0.05),
-                shape: BoxShape.circle,
+            // Add Card Button
+            IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: onSurface.withOpacity(0.05),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.add, color: onSurface, size: 20),
               ),
-              child: Icon(Icons.add, color: onSurface, size: 20),
+              onPressed: () async {
+                final newCard = await Navigator.of(context).push<CreditCard>(
+                  MaterialPageRoute(builder: (context) => const AddCardScreen()),
+                );
+                if (newCard != null) {
+                  _addNewCard(newCard);
+                }
+              },
             ),
-            onPressed: () async {
-              final newCard = await Navigator.of(context).push<CreditCard>(
-                MaterialPageRoute(builder: (context) => const AddCardScreen()),
-              );
-              if (newCard != null) {
-                _addNewCard(newCard);
-              }
-            },
-          ),
-          const SizedBox(width: 12),
+            const SizedBox(width: 12),
+          ],
         ],
       ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(),
             )
-          : _cards.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.only(top: 8, bottom: 32),
-                  itemCount: _cards.length,
-                  itemBuilder: (context, index) {
-                    final card = _cards[index];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: CreditCardWidget(
-                        key: _cardKeys[card.id],
-                        card: card,
-                        showDetails: _revealDetails,
-                      ),
-                    );
-                  },
+          : !_isAuthenticated
+              ? _buildLockState()
+              : _cards.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.only(top: 8, bottom: 32),
+                      itemCount: _cards.length,
+                      itemBuilder: (context, index) {
+                        final card = _cards[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: CreditCardWidget(
+                            key: _cardKeys[card.id],
+                            card: card,
+                            showDetails: _revealDetails,
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
+
+  Widget _buildLockState() {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final surface = Theme.of(context).colorScheme.surface;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.lock_outline,
+              size: 80,
+              color: onSurface.withOpacity(0.4),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Wallet Locked',
+              style: GoogleFonts.inter(
+                color: onSurface,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Biometric authentication is required to unlock and view your secure card wallet.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: onSurface.withOpacity(0.5),
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: onSurface,
+                foregroundColor: surface,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _checkBiometricAuth,
+              icon: const Icon(Icons.fingerprint, size: 20),
+              label: Text(
+                'Unlock Wallet',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
