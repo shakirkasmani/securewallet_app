@@ -84,7 +84,15 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
           setState(() {
             _isInitialized = true;
           });
-          _startImageStream();
+          
+          // Introduce a 500ms delay to allow the camera preview texture to register
+          // and display in the engine before initiating the image stream.
+          // This avoids native thread deadlocks/freezes on initial startup.
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _startImageStream();
+            }
+          });
         }
       }
     } catch (e) {
@@ -255,6 +263,11 @@ class _CardScannerScreenState extends State<CardScannerScreen> with SingleTicker
   @override
   void dispose() {
     _isScanning = true;
+    
+    // Explicitly stop the image stream before disposing the controller to prevent native thread leaks
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      _controller!.stopImageStream();
+    }
     _controller?.dispose();
     _textRecognizer.close();
     _animationController.dispose();
