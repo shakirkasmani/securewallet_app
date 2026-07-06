@@ -465,7 +465,7 @@ class CreditCardWidgetState extends State<CreditCardWidget> with SingleTickerPro
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white.withAlpha((255 * 0.15).toInt()),
           shape: BoxShape.circle,
@@ -477,7 +477,7 @@ class CreditCardWidgetState extends State<CreditCardWidget> with SingleTickerPro
         child: Icon(
           icon,
           color: Colors.white,
-          size: 14,
+          size: 18,
         ),
       ),
     );
