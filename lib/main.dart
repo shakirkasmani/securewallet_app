@@ -29,6 +29,13 @@ class CreditCardVaultApp extends StatelessWidget {
           onSurface: Colors.black87,
           error: Colors.redAccent,
         ),
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark, // Android: dark icons
+            statusBarBrightness: Brightness.light,    // iOS: dark icons
+          ),
+        ),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
@@ -41,6 +48,13 @@ class CreditCardVaultApp extends StatelessWidget {
           surface: Color(0xFF1E1E24),
           onSurface: Colors.white,
           error: Colors.redAccent,
+        ),
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light, // Android: light icons
+            statusBarBrightness: Brightness.dark,     // iOS: light icons
+          ),
         ),
         useMaterial3: true,
       ),
