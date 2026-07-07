@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:credit_card_app/models/credit_card.dart';
+import 'package:securewallet_app/models/credit_card.dart';
 
 void main() {
   group('CreditCard Model Tests', () {

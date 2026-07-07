@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:credit_card_app/main.dart';
-import 'package:credit_card_app/screens/wallet_screen.dart';
+import 'package:securewallet_app/main.dart';
+import 'package:securewallet_app/screens/wallet_screen.dart';
 
 void main() {
   testWidgets('Wallet screen renders title and cards smoke test', (WidgetTester tester) async {
