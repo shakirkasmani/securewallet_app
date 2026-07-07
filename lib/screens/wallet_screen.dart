@@ -302,6 +302,34 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
         ),
         actions: [
+          // Info / Licenses Page Trigger
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: onSurface.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.info_outline, color: onSurface, size: 20),
+            ),
+            tooltip: 'About & Licenses',
+            onPressed: () {
+              showLicensePage(
+                context: context,
+                applicationName: 'Secure Wallet',
+                applicationVersion: '1.0.0',
+                applicationIcon: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Icon(
+                    Icons.wallet,
+                    size: 64,
+                    color: onSurface,
+                  ),
+                ),
+                applicationLegalese: '© 2026 Shakir Kasmani. All rights reserved.',
+              );
+            },
+          ),
           if (_isAuthenticated) ...[
             // Security Visibility Toggle in AppBar (Global toggle)
             IconButton(
